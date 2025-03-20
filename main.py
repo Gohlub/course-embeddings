@@ -74,5 +74,27 @@ async def embed_texts(request: EmbeddingRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Add a simple test endpoint that doesn't use the model
+@app.post("/test")
+async def test_endpoint(data: dict):
+    return {"received": data, "message": "Test endpoint working!"}
+
+# Add a debugging endpoint for the embed functionality
+@app.post("/debug_embed")
+async def debug_embed(request: EmbeddingRequest):
+    try:
+        # Check if model has encode method
+        has_encode = hasattr(model, 'encode')
+        model_methods = [method for method in dir(model) if not method.startswith('_') and callable(getattr(model, method))]
+        
+        return {
+            "received_request": request.dict(),
+            "model_has_encode_method": has_encode,
+            "available_model_methods": model_methods[:20],  # Limit to first 20 methods
+            "model_type": str(type(model))
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
