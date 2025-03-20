@@ -61,7 +61,39 @@ async def embed_texts(request: EmbeddingRequest):
             else:
                 texts = request.texts
             
-            embeddings = model.encode(texts, max_length=max_length)
+            # The nvidia/NV-Embed-v2 model might not have a direct encode method
+            # Let's check if the method exists and use it correctly
+            if hasattr(model, 'encode'):
+                embeddings = model.encode(texts, max_length=max_length)
+            else:
+                # Try using the forward method or embedding generation approach
+                # This is a common pattern for transformer models
+                from transformers import AutoTokenizer
+                
+                tokenizer = AutoTokenizer.from_pretrained('nvidia/NV-Embed-v2', trust_remote_code=True)
+                inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=max_length)
+                
+                # Move inputs to the same device as model
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                
+                # Get embeddings from model
+                outputs = model(**inputs)
+                
+                # The output format depends on the specific model architecture
+                # This is a common way to get sentence embeddings
+                # Try different options based on model output
+                if hasattr(outputs, 'pooler_output'):
+                    embeddings = outputs.pooler_output
+                elif hasattr(outputs, 'last_hidden_state'):
+                    # Use mean pooling of last hidden state
+                    attention_mask = inputs['attention_mask']
+                    last_hidden = outputs.last_hidden_state
+                    embeddings = torch.sum(last_hidden * attention_mask.unsqueeze(-1), dim=1) / torch.sum(attention_mask, dim=1, keepdim=True)
+                else:
+                    # If we can't find a standard pattern, raise an error
+                    raise ValueError("Could not determine how to extract embeddings from this model")
+            
+            # Normalize the embeddings
             embeddings = F.normalize(embeddings, p=2, dim=1)
 
             print(f"Embedding size: {embeddings.size()}")
@@ -72,6 +104,9 @@ async def embed_texts(request: EmbeddingRequest):
         return EmbeddingResponse(embeddings=embeddings_list, time_taken=time_taken)
     
     except Exception as e:
+        print(f"Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 # Add a simple test endpoint that doesn't use the model
