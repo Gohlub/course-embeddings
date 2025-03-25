@@ -13,7 +13,17 @@
         .search-box { 
             margin: 20px 0; 
             display: flex;
+            flex-direction: column;
             gap: 10px;
+        }
+        .search-row {
+            display: flex;
+            gap: 10px;
+        }
+        .search-options {
+            display: flex;
+            gap: 10px;
+            align-items: center;
         }
         input[type="text"] { 
             flex-grow: 1;
@@ -21,6 +31,13 @@
             font-size: 16px;
             border: 1px solid #ddd;
             border-radius: 4px;
+        }
+        select {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
         }
         button { 
             padding: 10px 20px; 
@@ -100,6 +117,28 @@
         h1 {
             color: #4285f4;
         }
+        .example-queries {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        .example-queries h3 {
+            margin-top: 0;
+            color: #4285f4;
+        }
+        .example-queries ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .example-queries li {
+            margin-bottom: 8px;
+            cursor: pointer;
+            color: #4285f4;
+        }
+        .example-queries li:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -107,8 +146,42 @@
     <p>Describe what you're interested in learning, and we'll find relevant courses for you.</p>
     
     <div class="search-box">
-        <input type="text" id="query" placeholder="E.g., I'm interested in learning about art history and criticism" onkeypress="handleKeyPress(event)">
-        <button onclick="searchCourses()">Search</button>
+        <div class="search-row">
+            <input type="text" id="query" placeholder="E.g., I'm interested in learning about art history and criticism" onkeypress="handleKeyPress(event)">
+            <button onclick="searchCourses()">Search</button>
+        </div>
+        <div class="search-options">
+            <label for="department">Filter by Department:</label>
+            <select id="department">
+                <option value="">All Departments</option>
+                <option value="Visual Arts">Visual Arts</option>
+                <option value="Science and Mathematics">Science and Mathematics</option>
+                <option value="Society Culture and Thought">Society Culture and Thought</option>
+                <option value="Advancement of Public Action">Advancement of Public Action</option>
+                <option value="Dance">Dance</option>
+                <option value="Drama">Drama</option>
+                <option value="Literature">Literature</option>
+                <option value="Music">Music</option>
+                <option value="Cultural Studies and Languages">Cultural Studies and Languages</option>
+            </select>
+            <label for="topk">Results:</label>
+            <select id="topk">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
+                <option value="20">20</option>
+            </select>
+        </div>
+    </div>
+    
+    <div class="example-queries">
+        <h3>Try These Example Queries:</h3>
+        <ul>
+            <li onclick="setExampleQuery('Courses about sustainable agriculture and food systems')">Courses about sustainable agriculture and food systems</li>
+            <li onclick="setExampleQuery('I want to learn programming and computer science from scratch')">I want to learn programming and computer science from scratch</li>
+            <li onclick="setExampleQuery('Classes that explore democracy and politics')">Classes that explore democracy and politics</li>
+            <li onclick="setExampleQuery('I am interested in dance and movement techniques')">I am interested in dance and movement techniques</li>
+        </ul>
     </div>
     
     <div id="loading" class="loading">
@@ -126,9 +199,18 @@
             }
         }
         
+        // Set example query from the suggestion list
+        function setExampleQuery(query) {
+            document.getElementById('query').value = query;
+            searchCourses();
+        }
+        
         async function searchCourses() {
             const query = document.getElementById('query').value;
             if (!query) return;
+            
+            const department = document.getElementById('department').value;
+            const topK = parseInt(document.getElementById('topk').value);
             
             document.getElementById('loading').style.display = 'block';
             document.getElementById('results').innerHTML = '';
@@ -137,7 +219,11 @@
                 const response = await fetch('/search_courses', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, top_k: 5 })
+                    body: JSON.stringify({ 
+                        query,
+                        top_k: topK,
+                        department: department || null
+                    })
                 });
                 
                 if (!response.ok) {

@@ -6,6 +6,7 @@ import time
 import os
 import re
 import string
+import requests
 from collections import Counter
 from math import log
 from fastapi import FastAPI, HTTPException, Request
@@ -38,6 +39,35 @@ class CourseMatch(BaseModel):
 class CourseSearchResponse(BaseModel):
     results: List[CourseMatch]
     query_time: float
+
+# Constants for embedding service
+EMBEDDING_SERVICE_URL = "http://localhost:8000/embed"
+QUERY_INSTRUCTION = "Provide a concise and relevant answer to the question"
+
+# Function to get query embedding from the embedding service
+def get_query_embedding(query_text):
+    """Call the embedding service to get a query embedding"""
+    if not query_text or query_text.strip() == '':
+        return None
+    
+    payload = {
+        "texts": [query_text],
+        "is_query": True  # This is a query, not a passage
+    }
+    
+    try:
+        response = requests.post(EMBEDDING_SERVICE_URL, json=payload)
+        response.raise_for_status()
+        result = response.json()
+        
+        if 'embeddings' in result and len(result['embeddings']) > 0:
+            return result['embeddings'][0]
+        else:
+            print(f"Warning: No embedding returned for query: {query_text[:50]}...")
+            return None
+    except Exception as e:
+        print(f"Error getting query embedding: {e}")
+        return None
 
 # Load courses with embeddings
 def load_course_data(csv_file):
@@ -147,35 +177,7 @@ def cosine_similarity(vec1, vec2):
     # Calculate cosine similarity
     return dot_product / (magnitude1 * magnitude2)
 
-# TF-IDF calculation for initial matching (to create pseudo-query embedding)
-def calculate_tf_idf(query_tokens, all_course_tokens):
-    # Calculate document frequency
-    doc_freq = {}
-    for course_id, course_tokens in all_course_tokens.items():
-        for token in set(course_tokens):  # Use set to count each token only once per document
-            doc_freq[token] = doc_freq.get(token, 0) + 1
-    
-    # Total number of documents
-    n_docs = len(all_course_tokens)
-    
-    # Calculate TF-IDF scores for each course
-    scores = {}
-    for course_id, course_tokens in all_course_tokens.items():
-        score = 0
-        course_tf = Counter(course_tokens)
-        
-        for token in query_tokens:
-            if token in course_tf and token in doc_freq and doc_freq[token] > 0:
-                # TF * IDF calculation
-                tf = course_tf[token] / len(course_tokens) if len(course_tokens) > 0 else 0
-                idf = log(n_docs / doc_freq[token]) if doc_freq[token] > 0 else 0
-                score += tf * idf
-        
-        scores[course_id] = score
-    
-    return scores
-
-# Function to search courses - using pure embedding similarity
+# Function to search courses - using proper query/document asymmetric search
 def search_courses(query_text, top_k=5, department=None):
     start_time = time.time()
     
@@ -188,63 +190,59 @@ def search_courses(query_text, top_k=5, department=None):
     if len(filtered_courses) == 0:
         return [], time.time() - start_time
     
-    # Preprocess query
-    query_tokens = preprocess_text(query_text)
+    # Get a query embedding using the embedding service
+    query_embedding = get_query_embedding(query_text)
     
-    # Always use the TF-IDF method to create a pseudo-query embedding
-    all_course_tokens = {}
-    for i, course in enumerate(filtered_courses):
-        course_text = f"{course['name']} {course['description']}"
-        all_course_tokens[i] = preprocess_text(course_text)
-    
-    # Calculate TF-IDF scores to find initial matches for embedding selection
-    tfidf_scores = calculate_tf_idf(query_tokens, all_course_tokens)
-    
-    # Take all courses for embedding averaging, but weight by their TF-IDF scores
-    # This ensures we always have a query embedding, even for queries with no exact matches
-    embeddings_to_average = []
-    weights = []
-    
-    # Get the top 5 courses by TF-IDF score (or all if fewer than 5)
-    num_to_average = min(5, len(filtered_courses))
-    top_indices = sorted(tfidf_scores.keys(), key=lambda k: tfidf_scores[k], reverse=True)[:num_to_average]
-    
-    for idx in top_indices:
-        score = tfidf_scores[idx]
-        # Only add courses with non-zero scores to avoid diluting with irrelevant courses
-        if score > 0:
-            embeddings_to_average.append(filtered_courses[idx]['embedding'])
-            weights.append(score)
-    
-    # If we found at least one course with a non-zero score
-    if embeddings_to_average:
-        # If we have weights, use weighted average
-        if sum(weights) > 0:
-            # Normalize weights
-            weights = [w / sum(weights) for w in weights]
-            # Weighted average of embeddings
-            query_embedding = np.average(embeddings_to_average, axis=0, weights=weights).tolist()
-        else:
-            # Simple average if weights are all zero
-            query_embedding = np.mean(embeddings_to_average, axis=0).tolist()
+    # If we couldn't get a query embedding, use fallback methods
+    if query_embedding is None:
+        # Preprocess query
+        query_tokens = preprocess_text(query_text)
+        
+        # Create a map of course tokens
+        all_course_tokens = {}
+        for i, course in enumerate(filtered_courses):
+            course_text = f"{course['name']} {course['description']}"
+            all_course_tokens[i] = preprocess_text(course_text)
+        
+        # Calculate TF-IDF scores
+        tfidf_scores = {}
+        for course_id, course_tokens in all_course_tokens.items():
+            # Calculate term frequency for each token in the course
+            course_tf = Counter(course_tokens)
+            
+            # Calculate document frequency across all courses
+            doc_freq = {}
+            for token in set(course_tokens):
+                doc_freq[token] = sum(1 for tokens in all_course_tokens.values() if token in tokens)
+            
+            # Calculate TF-IDF score for each course
+            score = 0
+            for token in query_tokens:
+                if token in course_tf and token in doc_freq and doc_freq[token] > 0:
+                    # TF * IDF calculation
+                    tf = course_tf[token] / len(course_tokens) if len(course_tokens) > 0 else 0
+                    idf = log(len(all_course_tokens) / doc_freq[token]) if doc_freq[token] > 0 else 0
+                    score += tf * idf
+            
+            tfidf_scores[course_id] = score
+        
+        # Sort courses by TF-IDF score
+        similarity_scores = [(i, tfidf_scores[i]) for i in range(len(filtered_courses))]
+        similarity_scores.sort(key=lambda x: x[1], reverse=True)
     else:
-        # If no good matches, just use the embedding of the first course as a fallback
-        # This is arbitrary but avoids returning an empty result
-        query_embedding = filtered_courses[0]['embedding']
-    
-    # Calculate cosine similarity scores for all courses
-    similarity_scores = []
-    for i, course in enumerate(filtered_courses):
-        # Get course embedding
-        course_embedding = course['embedding']
+        # If we have a query embedding, use cosine similarity
+        similarity_scores = []
+        for i, course in enumerate(filtered_courses):
+            # Get course embedding
+            course_embedding = course['embedding']
+            
+            # Calculate cosine similarity
+            similarity = cosine_similarity(query_embedding, course_embedding)
+            
+            similarity_scores.append((i, similarity))
         
-        # Calculate cosine similarity
-        similarity = cosine_similarity(query_embedding, course_embedding)
-        
-        similarity_scores.append((i, similarity))
-    
-    # Sort by similarity score (descending)
-    similarity_scores.sort(key=lambda x: x[1], reverse=True)
+        # Sort by similarity score (descending)
+        similarity_scores.sort(key=lambda x: x[1], reverse=True)
     
     # Get top-k matches
     matches = []
@@ -304,6 +302,6 @@ if __name__ == "__main__":
     # Initialize on startup
     if initialize():
         print(f"Server initialized with {len(courses)} courses")
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        uvicorn.run(app, host="0.0.0.0", port=8001)
     else:
         print("Failed to initialize the server. Check if the course data CSV exists.") 

@@ -10,6 +10,9 @@ from tqdm import tqdm
 input_csv = '../course-embd-data.csv'  # Assuming it's in parent directory
 output_csv = '../course-embd-data-with-embeddings.csv'
 
+# Passage instruction for better encoding of course descriptions
+PASSAGE_INSTRUCTION = "Provide information that would help answer questions"
+
 def generate_embeddings():
     # Check if input file exists
     if not os.path.exists(input_csv):
@@ -39,18 +42,29 @@ def generate_embeddings():
     
     for row in tqdm(rows):
         if len(row) >= 13:  # Make sure the row has a description column
-            description = row[12]
+            # Extract all the necessary fields
+            code = row[0]  # Course code
+            name = row[1]  # Course name
+            description = row[12]  # Course description
             
             # Skip empty descriptions
             if not description or description.strip() == '':
                 embedding = []
             else:
-                # Add EOS token to input text
-                input_text = description + model.tokenizer.eos_token
+                # Enhanced text with course context
+                enhanced_text = f"Course {code}: {name}\n\n{description}"
                 
-                # Generate embedding
+                # Add EOS token to input text
+                input_text = enhanced_text + model.tokenizer.eos_token
+                
+                # Generate embedding with passage instruction
                 with torch.no_grad():
-                    embedding = model.encode([input_text], batch_size=1, normalize_embeddings=True)[0].tolist()
+                    embedding = model.encode(
+                        [input_text], 
+                        batch_size=1, 
+                        normalize_embeddings=True,
+                        prompt=PASSAGE_INSTRUCTION
+                    )[0].tolist()
             
             # Add the embedding (as a string representation) to the row
             new_row = row + [json.dumps(embedding)]

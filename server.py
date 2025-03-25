@@ -14,7 +14,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # This disables CUDA completely
 device = torch.device("cpu")
 print(f"Using device: {device.type}")
 
-# Then load the model with CPU
+# Then load the model with CPU - using a more recent model that supports asymmetric semantic search
 print("Loading model...")
 model = SentenceTransformer('nvidia/NV-Embed-v2', trust_remote_code=True, device=device)
 model.max_seq_length = 16384
@@ -31,9 +31,9 @@ class EmbeddingResponse(BaseModel):
     embeddings: List[List[float]]
     time_taken: float
 
-# Each query needs to be accompanied by an corresponding instruction describing the task.
-task_name_to_instruct = {"example": "Given a question, retrieve passages that answer the question",}
-query_prefix = "Instruct: " + task_name_to_instruct["example"] + "\nQuery: "
+# Query instructions for better semantic search
+QUERY_INSTRUCTION = "Provide a concise and relevant answer to the question"
+PASSAGE_INSTRUCTION = "Provide information that would help answer questions"
 
 @app.post("/embed", response_model=EmbeddingResponse)
 async def embed_texts(request: EmbeddingRequest):
@@ -45,11 +45,21 @@ async def embed_texts(request: EmbeddingRequest):
             input_texts = [text + model.tokenizer.eos_token for text in request.texts]
             
             if request.is_query:
-                # For queries, use the prompt parameter
-                embeddings = model.encode(input_texts, batch_size=1, prompt=query_prefix, normalize_embeddings=True)
+                # For queries, use the specific instruction for queries
+                embeddings = model.encode(
+                    input_texts, 
+                    batch_size=1, 
+                    normalize_embeddings=True,
+                    prompt=QUERY_INSTRUCTION
+                )
             else:
-                # For passages, no prompt
-                embeddings = model.encode(input_texts, batch_size=1, normalize_embeddings=True)
+                # For passages, use the passage instruction
+                embeddings = model.encode(
+                    input_texts, 
+                    batch_size=1, 
+                    normalize_embeddings=True,
+                    prompt=PASSAGE_INSTRUCTION
+                )
             
             print(f"Embedding size: {embeddings.shape}")
             

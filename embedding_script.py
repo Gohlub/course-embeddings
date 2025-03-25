@@ -11,15 +11,27 @@ output_csv = 'course-embd-data-with-embeddings.csv'
 # FastAPI endpoint URL (assuming your service is running on localhost:8000)
 embedding_api_url = 'http://localhost:8000/embed'
 
-def get_embedding(text):
+def get_embedding(text, name="", code=""):
     """
     Call the embedding API to get embeddings for the given text.
+    
+    Args:
+        text: The course description text
+        name: Course name to add context
+        code: Course code to add context
     """
     if not text or text.strip() == '':
         return []
     
+    # Enhance the text with additional context if available
+    enhanced_text = text
+    if name and code:
+        enhanced_text = f"Course {code}: {name}\n\n{text}"
+    elif name:
+        enhanced_text = f"Course: {name}\n\n{text}"
+    
     payload = {
-        "texts": [text],
+        "texts": [enhanced_text],
         "is_query": False  # Treating course descriptions as passages, not queries
     }
     
@@ -32,7 +44,7 @@ def get_embedding(text):
         if 'embeddings' in result and len(result['embeddings']) > 0:
             return result['embeddings'][0]
         else:
-            print(f"Warning: No embedding returned for text: {text[:50]}...")
+            print(f"Warning: No embedding returned for text: {enhanced_text[:50]}...")
             return []
     except Exception as e:
         print(f"Error getting embedding: {e}")
@@ -63,8 +75,13 @@ def process_csv():
     
     for row in tqdm(rows):
         if len(row) >= 13:  # Make sure the row has a description column
-            description = row[12]
-            embedding = get_embedding(description)
+            # Extract all the necessary fields
+            code = row[0]  # Course code
+            name = row[1]  # Course name
+            description = row[12]  # Course description
+            
+            # Get embedding with enhanced context
+            embedding = get_embedding(description, name, code)
             
             # Add the embedding (as a string representation) to the row
             new_row = row + [json.dumps(embedding)]
