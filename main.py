@@ -1,35 +1,26 @@
 import torch
-import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModel
 import time
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
 import uvicorn
-import gc
 import os
+from sentence_transformers import SentenceTransformer
 
 app = FastAPI()
-os.environ['CUDA_VISIBLE_DEVICES'] = '0' 
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # This disables CUDA completely
 
-# Load model (do this only once at startup)
+# Set CPU device first
+device = torch.device("cpu")
+print(f"Using device: {device.type}")
+
+# Then load the model with CPU
 print("Loading model...")
-model = AutoModel.from_pretrained('nvidia/NV-Embed-v2', trust_remote_code=True, torch_dtype="auto")
-model.eval()
-# model.half()
+model = SentenceTransformer('nvidia/NV-Embed-v2', trust_remote_code=True, device=device)
+model.max_seq_length = 16384
+model.tokenizer.padding_side = "right"
 
-device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-print(device.type)
-model.to(device)
-if device.type == 'cuda':
-    # gc.collect()
-    torch.cuda.empty_cache()
-    torch.cuda.memory.empty_cache()
-    torch.cuda.max_memory_allocated()
-
-
-print(f"Model loaded and moved to {device}")
+print(f"Model loaded on {device}")
 
 # Define request and response models
 class EmbeddingRequest(BaseModel):
@@ -44,61 +35,26 @@ class EmbeddingResponse(BaseModel):
 task_name_to_instruct = {"example": "Given a question, retrieve passages that answer the question",}
 query_prefix = "Instruct: " + task_name_to_instruct["example"] + "\nQuery: "
 
-max_length = 32768
-
 @app.post("/embed", response_model=EmbeddingResponse)
 async def embed_texts(request: EmbeddingRequest):
     start_time = time.time()
     
     try:
         with torch.no_grad():
-            if device.type == 'cuda':
-                # gc.collect()
-                torch.cuda.empty_cache()
-                torch.cuda.memory.empty_cache()
+            # Add EOS token to input texts
+            input_texts = [text + model.tokenizer.eos_token for text in request.texts]
+            
             if request.is_query:
-                texts = [query_prefix + text for text in request.texts]
+                # For queries, use the prompt parameter
+                embeddings = model.encode(input_texts, batch_size=1, prompt=query_prefix, normalize_embeddings=True)
             else:
-                texts = request.texts
+                # For passages, no prompt
+                embeddings = model.encode(input_texts, batch_size=1, normalize_embeddings=True)
             
-            # The nvidia/NV-Embed-v2 model might not have a direct encode method
-            # Let's check if the method exists and use it correctly
-            if hasattr(model, 'encode'):
-                embeddings = model.encode(texts, max_length=max_length)
-            else:
-                # Try using the forward method or embedding generation approach
-                # This is a common pattern for transformer models
-                from transformers import AutoTokenizer
-                
-                tokenizer = AutoTokenizer.from_pretrained('nvidia/NV-Embed-v2', trust_remote_code=True)
-                inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=max_length)
-                
-                # Move inputs to the same device as model
-                inputs = {k: v.to(device) for k, v in inputs.items()}
-                
-                # Get embeddings from model
-                outputs = model(**inputs)
-                
-                # The output format depends on the specific model architecture
-                # This is a common way to get sentence embeddings
-                # Try different options based on model output
-                if hasattr(outputs, 'pooler_output'):
-                    embeddings = outputs.pooler_output
-                elif hasattr(outputs, 'last_hidden_state'):
-                    # Use mean pooling of last hidden state
-                    attention_mask = inputs['attention_mask']
-                    last_hidden = outputs.last_hidden_state
-                    embeddings = torch.sum(last_hidden * attention_mask.unsqueeze(-1), dim=1) / torch.sum(attention_mask, dim=1, keepdim=True)
-                else:
-                    # If we can't find a standard pattern, raise an error
-                    raise ValueError("Could not determine how to extract embeddings from this model")
+            print(f"Embedding size: {embeddings.shape}")
             
-            # Normalize the embeddings
-            embeddings = F.normalize(embeddings, p=2, dim=1)
-
-            print(f"Embedding size: {embeddings.size()}")
-            
-            embeddings_list = embeddings.cpu().float().tolist()
+            # Convert numpy array to list
+            embeddings_list = embeddings.tolist()
             
         time_taken = time.time() - start_time
         return EmbeddingResponse(embeddings=embeddings_list, time_taken=time_taken)
