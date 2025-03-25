@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Course Search</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 900px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            line-height: 1.6;
+        }
+        .search-box { 
+            margin: 20px 0; 
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] { 
+            flex-grow: 1;
+            padding: 10px; 
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button { 
+            padding: 10px 20px; 
+            background: #4285f4; 
+            color: white; 
+            border: none; 
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #3367d6;
+        }
+        .course { 
+            margin: 20px 0; 
+            padding: 20px; 
+            border: 1px solid #ddd; 
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .course-header { 
+            display: flex; 
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .course-title { 
+            font-weight: bold; 
+            font-size: 20px;
+            color: #202124;
+        }
+        .course-score { 
+            background-color: #4285f4; 
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .course-meta {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+            color: #5f6368;
+            font-size: 14px;
+        }
+        .course-dept, .course-faculty { 
+            color: #4285f4; 
+        }
+        .course-description {
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+        .loading { 
+            display: none; 
+            margin: 20px;
+            text-align: center;
+            color: #5f6368;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4285f4;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #5f6368;
+        }
+        h1 {
+            color: #4285f4;
+        }
+    </style>
+</head>
+<body>
+    <h1>Course Finder</h1>
+    <p>Describe what you're interested in learning, and we'll find relevant courses for you.</p>
+    
+    <div class="search-box">
+        <input type="text" id="query" placeholder="E.g., I'm interested in learning about art history and criticism" onkeypress="handleKeyPress(event)">
+        <button onclick="searchCourses()">Search</button>
+    </div>
+    
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <div>Searching courses...</div>
+    </div>
+    
+    <div id="results"></div>
+    
+    <script>
+        // Handle Enter key in the search box
+        function handleKeyPress(event) {
+            if (event.key === "Enter") {
+                searchCourses();
+            }
+        }
+        
+        async function searchCourses() {
+            const query = document.getElementById('query').value;
+            if (!query) return;
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').innerHTML = '';
+            
+            try {
+                const response = await fetch('/search_courses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, top_k: 5 })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                let html = '';
+                if (data.results.length === 0) {
+                    html = '<div class="no-results"><p>No matching courses found.</p><p>Try different search terms or explore more general topics.</p></div>';
+                } else {
+                    data.results.forEach(course => {
+                        const score = Math.round(course.score * 100);
+                        html += `
+                            <div class="course">
+                                <div class="course-header">
+                                    <span class="course-title">${course.code}: ${course.name}</span>
+                                    <span class="course-score">${score}% match</span>
+                                </div>
+                                <div class="course-meta">
+                                    <span class="course-dept">Department: ${course.department}</span>
+                                    <span class="course-faculty">Faculty: ${course.faculty}</span>
+                                </div>
+                                <div class="course-description">${course.description}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    // Add a note about search time
+                    const searchTime = (data.query_time * 1000).toFixed(2);
+                    html += `<p style="text-align: center; color: #5f6368; font-size: 14px;">Found ${data.results.length} courses in ${searchTime} ms</p>`;
+                }
+                
+                document.getElementById('results').innerHTML = html;
+            } catch (error) {
+                document.getElementById('results').innerHTML = `
+                    <div class="no-results">
+                        <p>Error: ${error.message}</p>
+                        <p>Please try again later or contact support if the problem persists.</p>
+                    </div>
+                `;
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        // Focus the input field on page load
+        window.onload = function() {
+            document.getElementById('query').focus();
+        };
+    </script>
+</body>
+</html> 

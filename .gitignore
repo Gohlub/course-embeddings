@@ -1,7 +1,37 @@
+# Python environments
+venv/
+env/
+*.env
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Large files and model data
+*.bin
+*.h5
+*.pt
+*.pth
+*.onnx
+*.model
+*.pkl
+*.pickle
+*.hdf5
+*.npy
+*.npz
+*.csv
+*.tsv
+*.json
+
+# Cache directories
+.cache/
+.vector_cache/
+*.log
+logs/
+
+# OS specific files
 .DS_Store
-.vscode
-.env
-.env.local
-.env.development
-.env.production
-/venv
+Thumbs.db
+.tmp/
