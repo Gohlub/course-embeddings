@@ -9,6 +9,10 @@ __pycache__/
 .coverage
 htmlcov/
 
+
+# Node
+node_modules/
+
 # Large files and model data
 *.bin
 *.h5
