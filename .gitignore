@@ -39,3 +39,5 @@ logs/
 .DS_Store
 Thumbs.db
 .tmp/
+
+!data/course-data.csv

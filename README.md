@@ -1,65 +1,86 @@
-# Course Search with Sentence-BERT
+# Course Embeddings Visualization Tool
 
-This project implements a semantic search application for courses using Sentence-BERT embeddings. The application allows users to find relevant courses based on natural language queries.
+This project provides a visualization tool for exploring course relationships based on semantic similarity. Using NV-Embed-v2 embeddings and graph visualization, it allows users to explore courses, their semantic relationships, and perform semantic search.
 
 ## Project Structure
 
-- `server.py`: Embedding service that generates embeddings using Sentence-BERT
-- `embedding_script.py`: Script to generate embeddings for all courses
-- `course-search/`: Search application that uses the embeddings for semantic search
-  - `main.py`: FastAPI application for course search
+The project has a consolidated structure with clear separation of concerns:
+
+- `backend/`: FastAPI server that provides course data and pre-calculated similarities
+  - `main.py`: Server that calculates similarities and provides APIs
+
+- `frontend/`: React application for visualization
+  - `src/`: React source code
+  - `public/`: Static assets
+
+- `data/`: Course data files
+  - `course-embd-data.csv`: Original course data
+  - `course-embd-data-with-embeddings.csv`: Course data with pre-calculated embeddings
+
+- `scripts/`: Utility scripts
+  - `embedding_script.py`: Script to generate embeddings for all courses
+  - `server.py`: Standalone embedding service (used by generate_embeddings.py)
   - `generate_embeddings.py`: Script to generate embeddings from within the search app
-  - `templates/`: HTML templates for the search interface
-  - `static/`: Static assets for the web interface
-  - `run.sh`: Script to run the course search application
+
+- `start.sh`: Launcher script to start both backend and frontend
 
 ## Requirements
 
 - Python 3.8+
 - PyTorch 2.0+
+- Node.js 14+
+- npm 7+
 - FastAPI
 - Sentence-Transformers
-- Other dependencies in requirements.txt
+- React
+- Sigma.js 2.0+
 
 ## Setup and Running
 
-1. **Set up the Environment**:
+1. **Set up Python Environment**:
    ```
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    ```
 
-2. **Start the Embedding Server**:
+2. **Setup Node.js Environment**:
    ```
-   python server.py
-   ```
-
-3. **Run the Course Search Application** (in a separate terminal):
-   ```
-   cd course-search
-   bash run.sh
+   cd frontend
+   npm install
    ```
 
-The run script will:
-1. Check if the embedding server is running
-2. Generate embeddings if they don't exist
-3. Start the search application on http://localhost:8000
+3. **Start the Application**:
+   ```
+   ./start.sh
+   ```
+
+This script will:
+1. Start the backend server on port 8001 
+2. Start the frontend development server on port 3000
+3. Open your browser to http://localhost:3000
 
 ## How it Works
 
-1. The Sentence-BERT model (`nvidia/NV-Embed-v2`) is used to generate embeddings for course descriptions.
-2. Course descriptions are enhanced with course code and name for better context.
-3. Different instructions are used for queries and passages to improve semantic matching.
-4. The search application compares the query embedding with course embeddings to find the most relevant matches.
+1. The backend pre-calculates pairwise cosine similarities between course embeddings during initialization
+2. The graph visualization places courses with higher similarity closer together
+3. Departments are still visually distinguishable by color
+4. Users can search for courses, filter by department, and explore the semantic space
 
 ## Features
 
 - Semantic search for courses based on natural language queries
-- Department filtering
-- Adjustable number of results
-- Example queries to help users get started
-- Fast response times with pre-computed embeddings
+- Interactive graph visualization of course relationships
+- Department filtering and navigation
+- Course detail view when selecting a course
+- Fast navigation with pre-calculated similarities
+
+## Technical Implementation
+
+- Backend uses FastAPI and Sentence-Transformers to handle embeddings and similarity calculations
+- Frontend uses React with Sigma.js for graph visualization
+- Cosine similarity is used to measure semantic relatedness between courses
+- Force-directed layout with ForceAtlas2 algorithm positions similar courses closer together
 
 ## License
 

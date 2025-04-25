@@ -9,11 +9,12 @@ import SearchInput from './components/SearchInput'
 
 function App() {
   // Load course data
-  const { coursesData, loading, error, departments } = useCoursesData();
+  const { coursesData, loading, error, departments, similarities } = useCoursesData();
   
   // Debug data loading
   console.log('coursesData length:', coursesData.length);
   console.log('departments:', departments);
+  console.log('similarities available:', Object.keys(similarities).length > 0);
   console.log('loading:', loading);
   console.log('error:', error);
   
@@ -32,7 +33,7 @@ function App() {
   const [graphReady, setGraphReady] = useState(false);
   
   // Set up graph
-  const graphRef = useGraphSetup(coursesData, departments, departmentColors, setGraphReady);
+  const graphRef = useGraphSetup(coursesData, departments, departmentColors, setGraphReady, similarities);
   console.log('graph nodes:', graphRef.current ? graphRef.current.nodes().length : 0);
   console.log('graph ready:', graphReady);
   
@@ -61,7 +62,7 @@ function App() {
   return (
     <div className="app-container">
       <h1>Bennington College Courses Visualization</h1>
-      <p>Courses are connected when their departments share categories</p>
+      <p>Courses are connected based on semantic similarity</p>
       
       <SearchInput 
         searchQuery={searchQuery}
