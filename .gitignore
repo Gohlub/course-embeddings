@@ -41,3 +41,8 @@ Thumbs.db
 .tmp/
 
 !data/course-data.csv
+
+
+
+
+!course-embeddings/embedding-server/course-embd-data.csv
